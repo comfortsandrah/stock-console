@@ -1,36 +1,446 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Inventory Console
 
-## Getting Started
+## 1. Overview
 
-First, run the development server:
+This project is an internal stock management console for clinic supplies teams.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+The application allows users to:
+
+* View the current stock catalogue
+* Search for products
+* Filter products by category
+* Sort products
+* Navigate through paginated results
+* Open an individual product to view its details
+* Correct a stock count when a physical count differs from the system count
+* Share a direct link to a specific product
+
+The product catalogue is provided by DummyJSON and is treated as the clinic's stock catalogue for this assessment.
+
+The application is built with **Next.js**, with a focus on responsive design, accessibility, maintainability, and resilience under patchy network conditions.
+
+---
+
+# 2. Application Structure
+
+The application is divided into three main user-facing areas:
+
+```text
+/login
+    ↓
+/products
+    ↓
+/products/[id]
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### Login
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+It contains:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+* Username input
+* Password input
+* Sign-in button
+* Form validation
+* Loading state during authentication
+* Error feedback for invalid credentials
 
-## Learn More
+### Product Listing
 
-To learn more about Next.js, take a look at the following resources:
+The layout contains:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```text
+------------------------------------------------
+Header / Navigation
+------------------------------------------------
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Product Inventory
 
-## Deploy on Vercel
+[ Search products... ] [ Filter ] [ Sort ]
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+------------------------------------------------
+| ID | Name | Category | Stock Count |         |
+------------------------------------------------
+|    |      |          |             | View →  |
+------------------------------------------------
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+              < 1 2 3 4 5 >
+
+------------------------------------------------
+```
+
+The table displays:
+
+* Product ID
+* Product name
+* Category
+* Stock count
+* Action to view the product
+
+The page also provides:
+
+* Loading states
+* Empty states
+* Error states
+
+### Product Detail
+
+Each product has its own route:
+
+```text
+/products/[id]
+```
+
+The detail page displays:
+
+* Product name
+* Product ID
+* Category
+* Description
+* Current stock count
+
+It also provides a **Correct Stock** action.
+
+The correction flow will:
+
+1. Display the current system stock count.
+2. Allow the user to enter the physically counted quantity.
+3. Validate that the value is a valid non-negative number.
+4. Require the user to confirm the correction.
+5. Submit the update.
+6. Update the displayed stock count.
+7. Refetch relevant cached data so the listing and detail views remain consistent.
+
+---
+
+# 3. Component Architecture
+
+I will keep components focused on a single responsibility rather than putting the entire application into large page components.
+
+```text
+src/
+├── app/
+│   ├── login/
+│   │   └── page.tsx
+│   ├── products/
+│   │   ├── page.tsx
+│   │   └── [id]/
+│   │       └── page.tsx
+│   └── layout.tsx
+│
+├── components/
+│   ├── auth/
+│   │   └── LoginForm.tsx
+│   ├── products/
+│   │   ├── ProductTable.tsx
+│   │   ├── ProductRow.tsx
+│   │   ├── ProductFilters.tsx
+│   │   ├── ProductSearch.tsx
+│   │   ├── ProductSort.tsx
+│   │   ├── ProductPagination.tsx
+│   │   ├── ProductDetailCard.tsx
+│   │   └── StockCorrectionForm.tsx
+│   └── ui/
+│       ├── Button.tsx
+│       ├── Input.tsx
+│       ├── Select.tsx
+│       ├── Modal.tsx
+│       └── EmptyState.tsx
+│
+├── lib/
+│   ├── api/
+│   │   └── products.ts
+│   └── utils/
+│
+└── types/
+    └── product.ts
+```
+
+The goal is to separate:
+
+* **Pages** — composition and routing
+* **Components** — UI and interaction
+* **API functions** — communication with DummyJSON
+* **Types** — shared TypeScript models
+* **Utilities** — reusable application logic
+
+---
+
+# 4. State Management
+
+## Server State
+
+Product data is server state because it originates from the API and may become stale.
+
+This includes:
+
+* Product list
+* Individual product details
+* Categories
+* Stock values
+
+I plan to manage this state using **TanStack Query**.
+
+This provides:
+
+* Request caching
+* Loading and error states
+* Query invalidation
+* Mutation handling
+
+## URL State
+
+Search, filtering, sorting and pagination affect what products the user is viewing, so these values should live in the URL rather than only in component state.
+
+This means that:
+* The product list url is a shareable representation of the current product-list view.
+* Refreshing the page does not lose the current filters.
+* Browser back/forward navigation works naturally.
+* A filtered view can be shared with another team member.
+
+## Local UI State
+
+Local state is reserved for temporary interface concerns such as:
+
+* Whether the stock correction dialog is open
+* The current value being typed into the correction form
+* Form validation errors
+* Button interaction states
+* Temporary UI feedback
+
+---
+
+# 5. Data Fetching, Caching and Invalidation
+
+The application will use a dedicated API layer rather than making API requests directly throughout components.
+
+For example:
+
+```text
+components
+    ↓
+query/mutation hooks
+    ↓
+API functions
+    ↓
+DummyJSON
+```
+
+### Product List
+
+The product list query will use the current URL parameters to determine the requested data.
+
+Search, category, sorting and pagination will therefore produce predictable query keys.
+
+For example:
+
+```text
+['products', {
+  search,
+  category,
+  sortBy,
+  sortOrder,
+  page
+}]
+```
+
+TanStack Query can then cache different views independently.
+
+### Product Details
+
+Individual products will have their own query:
+
+```text
+['product', productId]
+```
+
+This prevents the application from unnecessarily loading the entire catalogue when a user opens one product.
+
+### Stock Correction
+
+Stock correction is a mutation.
+
+After a successful correction, the application will update or invalidate:
+
+```text
+['product', productId]
+['products', ...]
+```
+
+This ensures that the corrected stock value is reflected both on the product detail page and in the product listing.
+
+### Patchy Wi-Fi
+
+The application is designed to minimise unnecessary network activity because users may be working on ward tablets with unreliable connectivity.
+
+I will use:
+
+* Cached server responses
+* Request deduplication
+* Retry handling for transient failures
+* Loading skeletons instead of blank screens
+* Pagination rather than loading the entire catalogue at once
+* Debounced search requests where appropriate
+
+---
+
+# 6. Layout, Spacing, Colour and Typography
+
+I will use a library called shadcn ui defaults to build the application's layout, spacing, colour and typography. 
+
+
+
+A clean sans-serif typeface will be used with a clear hierarchy between:
+
+* Page titles
+* Section headings
+* Body text
+* Table data
+* Supporting text
+* Form labels
+
+The main goal is high readability on tablet screens rather than using typography as a decorative element.
+
+If a UI component library is used, I will retain its accessible defaults where appropriate and customise only where the product requirements require it.
+
+---
+
+# 7. Accessibility
+
+I will leverage shadcn ui accessibility defaults for all interactive elements.
+
+I will ensure the following accessibility standards are met:
+
+* Keyboard accessibility
+* Semantic HTML
+* Form labels
+* Table headers
+* Focus states
+* Colour contrast
+* Loading and error states
+
+
+# 8. Decision Log
+
+## Decision 1 — Keep search, filters, sorting and pagination in URL state
+
+**Decision:** Represent list controls through URL query parameters.
+
+**Alternative rejected:** Keep all search/filter/sort/pagination values only in React component state.
+
+**Why:** The brief specifically requires users to share links and work with specific inventory views. URL state makes views reproducible, supports browser navigation and preserves the user's context after refresh. It also prevents the URL from representing one state while the UI represents another.
+
+---
+
+## Decision 2 — Use TanStack Query for server state
+
+**Decision:** Use TanStack Query for product fetching, caching and mutations.
+
+**Alternative rejected:** Fetch products with `useEffect` and store the response in `useState`.
+
+**Why:** Products are server-owned data rather than purely local UI state. TanStack Query provides caching, request deduplication, stale-data handling, retries and query invalidation, which are particularly useful when users are working over unreliable Wi-Fi.
+
+---
+
+## Decision 3 — Paginate rather than load the entire catalogue
+
+**Decision:** Display products in paginated results.
+
+**Alternative rejected:** Fetch the entire catalogue and render every product on the page.
+
+**Why:**  Pagination reduces the amount of data transferred and rendered, which is useful on ward tablets and slower networks.
+
+---
+
+## Decision 4 — Use a dedicated stock correction interaction
+
+**Decision:** Require an explicit correction form and confirmation rather than making the stock cell directly editable.
+
+**Alternative rejected:** Allow users to click the stock number and immediately edit it inline.
+
+**Why:** A dedicated interaction makes the action intentional, provides room for validation and reduces accidental changes.
+
+---
+
+## Decision 5 — Keep product detail on a separate route
+
+**Decision:** Use `/products/[id]` for product details.
+
+**Alternative rejected:** Open product details only inside a modal on the listing page.
+
+**Why:** A dedicated route gives every product a stable URL that can be copied into chat, bookmarked and opened directly.
+
+---
+
+# 9. Technology Choices
+
+### Framework
+
+**Next.js + TypeScript**
+
+Next.js provides:
+
+* File-based routing
+* Dynamic routes
+* Server/client rendering options
+* Good application structure
+* TypeScript support
+
+### Data Fetching
+
+**TanStack Query**
+
+Used for server state, caching, mutations and invalidation.
+
+### Styling
+
+The application will use a consistent styling system/design token approach rather than styling each component independently.
+
+Tokens will define recurring values such as:
+
+```text
+Spacing
+Border radius
+Typography sizes
+Font weights
+Colours
+Breakpoints
+Shadows
+```
+
+This makes future visual changes easier and keeps the interface consistent.
+
+### API
+
+**DummyJSON**
+
+DummyJSON is used as the product catalogue for the assessment. Its product fields are mapped directly to the inventory domain without inventing additional clinical information.
+
+---
+
+# 13. Future Production Considerations
+
+If this prototype were being taken into production, I would introduce a backend responsible for:
+
+* Authentication and role-based access
+* Persistent stock corrections
+* Audit history for stock changes
+* User identity for each correction
+* Multi-clinic/organisation isolation
+* Server-side validation
+* Concurrency handling
+* Database persistence
+* Monitoring and error logging
+
+The frontend architecture is intentionally structured so that DummyJSON can later be replaced by a real inventory API without requiring the UI components to know how the backend works.
+
+---
+
+# 14. Key UX Principles
+
+The design follows five principles:
+
+1. **Fast to scan** — stock information is presented in a clear, structured table.
+2. **Easy to find** — search, filtering, sorting and pagination are always accessible.
+3. **Safe to change** — stock corrections require validation and explicit confirmation.
+4. **Easy to share** — products have stable, unique URLs.
+5. **Resilient to poor connectivity** — cached data, pagination and clear network states reduce the impact of unreliable Wi-Fi.
