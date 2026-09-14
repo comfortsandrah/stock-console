@@ -101,7 +101,25 @@ export async function refreshSessionToken(
     return newSession
 }
 
+let memorySession: AuthSession | null = null
+let isInitialized = false
+
+export function getStoredAuthSession(): AuthSession | null {
+    if (typeof window === "undefined") return null
+    if (isInitialized) return memorySession
+    try {
+        const stored = localStorage.getItem(AUTH_STORAGE_KEY)
+        memorySession = stored ? JSON.parse(stored) : null
+        isInitialized = true
+        return memorySession
+    } catch {
+        return null
+    }
+}
+
 export function saveAuthSession(session: AuthSession | null) {
+    memorySession = session
+    isInitialized = true
     if (typeof window === "undefined") return
     try {
         if (session) {
@@ -118,15 +136,23 @@ export function saveAuthSession(session: AuthSession | null) {
     }
 }
 
-export function getStoredAuthSession(): AuthSession | null {
-    if (typeof window === "undefined") return null
-    try {
-        const stored = localStorage.getItem(AUTH_STORAGE_KEY)
-        if (!stored) return null
-        const session: AuthSession = JSON.parse(stored)
-        return session
-    } catch {
-        return null
+export function subscribeToAuth(callback: () => void) {
+    if (typeof window === "undefined") return () => {}
+    const handler = () => {
+        try {
+            const stored = localStorage.getItem(AUTH_STORAGE_KEY)
+            memorySession = stored ? JSON.parse(stored) : null
+            isInitialized = true
+        } catch {
+            memorySession = null
+        }
+        callback()
+    }
+    window.addEventListener("auth_changed", handler)
+    window.addEventListener("storage", handler)
+    return () => {
+        window.removeEventListener("auth_changed", handler)
+        window.removeEventListener("storage", handler)
     }
 }
 

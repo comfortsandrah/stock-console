@@ -1,57 +1,50 @@
 "use client"
 
-import React, { useState, useEffect, use } from "react"
-import Link from "next/link"
-import Image from "next/image"
-import { useParams, useRouter } from "next/navigation"
 import {
-    ArrowLeft,
-    Star,
-    CheckCircle2,
-    AlertTriangle,
     AlertCircle,
-    RefreshCw,
-    XCircle,
-    Package,
-    ShieldCheck,
-    Truck,
-    RotateCcw,
+    AlertTriangle,
+    ArrowLeft,
     Barcode,
-    QrCode,
-    Calendar,
-    Tag,
-    Scale,
-    Ruler,
-    Share2,
-    Copy,
-    Plus,
-    Minus,
-    Building2,
     Boxes,
-    Edit3,
+    Building2,
     Check,
+    CheckCircle2,
+    Copy,
+    Edit3,
     MessageSquare,
-    User,
-    Mail,
-    Sparkles,
+    Minus,
+    Package,
+    Plus,
+    RefreshCw,
+    RotateCcw,
+    Ruler,
+    Scale,
+    Share2,
+    ShieldCheck,
+    Star,
+    Tag,
+    Truck,
+    XCircle
 } from "lucide-react"
+import Image from "next/image"
+import Link from "next/link"
+import React, { use, useEffect, useState } from "react"
 
-import { Product } from "@/types/product"
-import { getProductById, updateProductStock } from "@/lib/products-data"
-import { useFetchProduct, useUpdateProduct } from "@/lib/hooks/useFetchProducts"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { toast } from "@/components/ui/toast"
-import { Empty, EmptyHeader, EmptyTitle, EmptyDescription, EmptyMedia, EmptyContent } from "@/components/ui/empty"
+import { useFetchProduct, useUpdateProduct } from "@/lib/hooks/useFetchProducts"
+import { getProductById, updateProductStock } from "@/lib/products-data"
+import { Product } from "@/types/product"
 
 export default function ProductDetailPage({ params }: { params: Promise<{ id: string }> }) {
     const resolvedParams = use(params)
     const productId = Number(resolvedParams.id)
-    const router = useRouter()
 
     const {
         data: apiProduct,
@@ -62,37 +55,25 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     } = useFetchProduct(productId)
     const updateProductMutation = useUpdateProduct()
 
-    const [product, setProduct] = useState<Product | undefined>(undefined)
-    const [isLoading, setIsLoading] = useState(true)
+    const [localProduct, setLocalProduct] = useState<Product | undefined>(undefined)
     const [selectedImageIndex, setSelectedImageIndex] = useState(0)
 
     // Stock adjustment state
     const [isAdjustingStock, setIsAdjustingStock] = useState(false)
-    const [newStockInput, setNewStockInput] = useState("")
+    const [customStockInput, setCustomStockInput] = useState<string | null>(null)
     const [adjustmentReason, setAdjustmentReason] = useState("Physical Recount")
     const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false)
 
-    useEffect(() => {
-        if (apiProduct) {
-            setProduct(apiProduct)
-            setNewStockInput(String(apiProduct.stock))
-            setIsLoading(false)
-        } else if (!isQueryLoading && !isError) {
-            const found = getProductById(productId)
-            setProduct(found)
-            if (found) {
-                setNewStockInput(String(found.stock))
-            }
-            setIsLoading(false)
-        } else if (isError) {
-            setIsLoading(false)
-        }
+    // Derive active product: local override -> apiProduct -> local fallback mock
+    const fallbackProduct = !apiProduct && !isQueryLoading && !isError ? getProductById(productId) : undefined
+    const product = localProduct ?? apiProduct ?? fallbackProduct
+    const newStockInput = customStockInput ?? (product ? String(product.stock) : "0")
 
+    useEffect(() => {
         const handleStockUpdated = () => {
             const found = getProductById(productId)
             if (found) {
-                setProduct(found)
-                setNewStockInput(String(found.stock))
+                setLocalProduct(found)
             }
         }
 
@@ -100,9 +81,9 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         return () => {
             window.removeEventListener("stock_updated", handleStockUpdated)
         }
-    }, [apiProduct, isQueryLoading, isError, productId])
+    }, [productId])
 
-    if (isLoading || isQueryLoading) {
+    if (isQueryLoading && !product) {
         return (
             <div className="flex h-96 items-center justify-center">
                 <div className="flex flex-col items-center gap-2">
@@ -135,7 +116,6 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                             variant="default"
                             size="sm"
                             onClick={() => {
-                                setIsLoading(true)
                                 refetch()
                             }}
                             className="w-full sm:w-auto h-8 gap-1.5 text-xs font-semibold"
@@ -286,14 +266,14 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         try {
             const updated = await updateProductMutation.mutateAsync({ id: product.id, stock: parsed })
             if (updated) {
-                setProduct(updated)
+                setLocalProduct(updated)
             }
         } catch {
             const updated = updateProductStock(product.id, parsed)
             if (updated) {
-                setProduct(updated)
+                setLocalProduct(updated)
             } else {
-                setProduct((prev) =>
+                setLocalProduct((prev) =>
                     prev
                         ? {
                               ...prev,
@@ -310,6 +290,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
             }
         }
 
+        setCustomStockInput(null)
         setIsAdjustingStock(false)
         setIsSubmittingAdjustment(false)
 
@@ -349,10 +330,12 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                         variant={isAdjustingStock ? "secondary" : "default"}
                         size="sm"
                         onClick={() => {
-                            setIsAdjustingStock(!isAdjustingStock)
-                            if (!isAdjustingStock) {
-                                setNewStockInput(String(product.stock))
+                            if (!isAdjustingStock && product) {
+                                setCustomStockInput(String(product.stock))
+                            } else {
+                                setCustomStockInput(null)
                             }
+                            setIsAdjustingStock(!isAdjustingStock)
                         }}
                         className="h-8 gap-1.5 px-3 text-xs font-medium"
                     >
@@ -373,7 +356,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                                 </div>
                                 <div>
                                     <CardTitle className="text-sm font-semibold text-foreground">
-                                        Adjust Physical Stock Count
+                                         Adjust Physical Stock Count
                                     </CardTitle>
                                     <CardDescription className="text-xs text-muted-foreground">
                                         Update the system inventory count after physical verification or delivery reconciliation.
@@ -406,7 +389,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                                         disabled={isSubmittingAdjustment}
                                         onClick={() => {
                                             const current = parseInt(newStockInput || "0", 10)
-                                            if (current > 0) setNewStockInput(String(current - 1))
+                                            if (current > 0) setCustomStockInput(String(current - 1))
                                         }}
                                     >
                                         <Minus className="size-3" />
@@ -416,7 +399,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                                         type="number"
                                         min="0"
                                         value={newStockInput}
-                                        onChange={(e) => setNewStockInput(e.target.value)}
+                                        onChange={(e) => setCustomStockInput(e.target.value)}
                                         disabled={isSubmittingAdjustment}
                                         className="h-8 w-24 text-center font-mono text-xs font-bold"
                                         required
@@ -430,7 +413,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                                         disabled={isSubmittingAdjustment}
                                         onClick={() => {
                                             const current = parseInt(newStockInput || "0", 10)
-                                            setNewStockInput(String((isNaN(current) ? 0 : current) + 1))
+                                            setCustomStockInput(String((isNaN(current) ? 0 : current) + 1))
                                         }}
                                     >
                                         <Plus className="size-3" />
@@ -481,7 +464,10 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                                     variant="ghost"
                                     size="sm"
                                     disabled={isSubmittingAdjustment}
-                                    onClick={() => setIsAdjustingStock(false)}
+                                    onClick={() => {
+                                        setCustomStockInput(null)
+                                        setIsAdjustingStock(false)
+                                    }}
                                     className="h-8 text-xs text-muted-foreground"
                                 >
                                     Cancel

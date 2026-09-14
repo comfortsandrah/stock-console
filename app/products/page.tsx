@@ -1,6 +1,5 @@
 "use client"
 
-import { useQueryClient } from "@tanstack/react-query"
 import {
     AlertCircle,
     AlertTriangle,
@@ -16,7 +15,7 @@ import {
     XCircle
 } from "lucide-react"
 import { parseAsInteger, useQueryState } from "nuqs"
-import React, { Suspense, useMemo } from "react"
+import React, { Suspense, useCallback, useMemo } from "react"
 
 import { createColumns } from "@/components/products/data-table/columns"
 import { DataTable } from "@/components/products/data-table/data-table"
@@ -64,8 +63,6 @@ const limitOptions = [
 ]
 
 function ProductsContainer() {
-    const queryClient = useQueryClient()
-
     // URL Query State using nuqs
     const [page, setPage] = useQueryState("page", parseAsInteger)
     const [limit, setLimit] = useQueryState("limit", parseAsInteger)
@@ -85,7 +82,7 @@ function ProductsContainer() {
     const currentSortValue = `${currentSortBy}-${currentOrder}`
 
     // TanStack Query: Fetch category list
-    const { data: categories = [], isLoading: isCategoriesLoading } = useFetchCategoryList()
+    const { data: categories = [] } = useFetchCategoryList()
 
     // TanStack Query: Fetch products from DummyJSON
     const {
@@ -124,7 +121,7 @@ function ProductsContainer() {
                 item.meta?.createdAt ||
                 new Date().toISOString(),
         }))
-    }, [productsResponse?.products])
+    }, [productsResponse])
 
     // Total counts & metrics
     const totalItems = productsResponse?.total ?? 0
@@ -149,7 +146,7 @@ function ProductsContainer() {
     }, [totalItems, productListings])
 
     // Handlers
-    const handleColumnSort = (field: string) => {
+    const handleColumnSort = useCallback((field: string) => {
         if (currentSortBy === field) {
             setOrder(currentOrder === "asc" ? "desc" : "asc")
         } else {
@@ -157,7 +154,7 @@ function ProductsContainer() {
             setOrder("asc")
         }
         setPage(1)
-    }
+    }, [currentSortBy, currentOrder, setOrder, setSortBy, setPage])
 
     const handleSortChange = (value: string | null) => {
         if (!value) return
@@ -203,7 +200,7 @@ function ProductsContainer() {
             order: currentOrder,
             onSort: handleColumnSort,
         })
-    }, [currentSortBy, currentOrder])
+    }, [currentSortBy, currentOrder, handleColumnSort])
 
     return (
         <div className="space-y-3.5">

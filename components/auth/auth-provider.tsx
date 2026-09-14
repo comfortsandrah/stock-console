@@ -1,16 +1,16 @@
 "use client"
 
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react"
+import React, { createContext, useContext, useEffect, useState, useCallback, useSyncExternalStore } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { useQueryClient } from "@tanstack/react-query"
 import {
     AuthSession,
     AuthUser,
     getStoredAuthSession,
+    subscribeToAuth,
     loginUser,
     refreshSessionToken,
     clearAuthSession,
-    saveAuthSession,
     TOKEN_LIFETIME_MINS,
 } from "@/lib/auth"
 import { productKeys } from "@/lib/hooks/useFetchProducts"
@@ -38,78 +38,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const pathname = usePathname()
     const queryClient = useQueryClient()
 
-    const [session, setSession] = useState<AuthSession | null>(null)
-    const [isLoading, setIsLoading] = useState(true)
-    const [isSessionExpired, setIsSessionExpired] = useState(false)
-    const [secondsRemaining, setSecondsRemaining] = useState<number>(TOKEN_LIFETIME_MINS * 60)
-
-    // Initial load from storage
-    useEffect(() => {
-        const stored = getStoredAuthSession()
-        if (stored) {
-            // Check if already expired
-            const diff = stored.expiresAt - Date.now()
-            if (diff > 0) {
-                setSession(stored)
-                setSecondsRemaining(Math.max(0, Math.floor(diff / 1000)))
-            } else {
-                // Token already expired upon app open
-                setSession(stored)
-                setIsSessionExpired(true)
-                setSecondsRemaining(0)
-            }
-        }
-        setIsLoading(false)
-
-        const handleAuthChanged = (e: Event) => {
-            const custom = e as CustomEvent<AuthSession | null>
-            setSession(custom.detail)
-            if (custom.detail) {
-                const diff = custom.detail.expiresAt - Date.now()
-                setSecondsRemaining(Math.max(0, Math.floor(diff / 1000)))
-                setIsSessionExpired(diff <= 0)
-            } else {
-                setSecondsRemaining(0)
-                setIsSessionExpired(false)
-            }
-        }
-
-        window.addEventListener("auth_changed", handleAuthChanged)
-        return () => window.removeEventListener("auth_changed", handleAuthChanged)
-    }, [])
+    const session = useSyncExternalStore(subscribeToAuth, getStoredAuthSession, () => null)
+    const [manualExpired, setManualExpired] = useState(false)
+    const [now, setNow] = useState<number>(() => Date.now())
 
     // Background session countdown & expiry detector
     useEffect(() => {
         if (!session) return
 
         const timer = setInterval(() => {
-            const timeLeftMs = session.expiresAt - Date.now()
-            const secs = Math.max(0, Math.floor(timeLeftMs / 1000))
-            setSecondsRemaining(secs)
-
-            if (timeLeftMs <= 0) {
-                // Token has expired!
-                if (!isSessionExpired) {
-                    setIsSessionExpired(true)
-                    toast.add({
-                        title: "Session Expired (1 min limit)",
-                        description: "Your 1-minute test token has expired. Please re-authenticate to continue seamlessly.",
-                        type: "error",
-                    })
-                }
-            }
+            setNow(Date.now())
         }, 1000)
 
         return () => clearInterval(timer)
-    }, [session, isSessionExpired])
+    }, [session])
+
+    const diff = session ? session.expiresAt - now : 0
+    const secondsRemaining = session ? Math.max(0, Math.floor(diff / 1000)) : 0
+    const isAutoExpired = Boolean(session && diff <= 0)
+    const isSessionExpired = manualExpired || isAutoExpired
+
+    // Toast notification when session expires
+    useEffect(() => {
+        if (session && diff <= 0 && !manualExpired) {
+            toast.add({
+                title: "Session Expired (1 min limit)",
+                description: "Your 1-minute test token has expired. Please re-authenticate to continue seamlessly.",
+                type: "error",
+            })
+        }
+    }, [session, diff, manualExpired])
 
     // Login action
     const login = useCallback(
         async (username: string, password: string) => {
             const newSession = await loginUser(username, password, TOKEN_LIFETIME_MINS)
-            setSession(newSession)
-            setIsSessionExpired(false)
-            setSecondsRemaining(TOKEN_LIFETIME_MINS * 60)
+            setManualExpired(false)
+            setNow(Date.now())
             queryClient.invalidateQueries({ queryKey: productKeys.all })
             return newSession
         },
@@ -119,9 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Logout action
     const logout = useCallback(() => {
         clearAuthSession()
-        setSession(null)
-        setIsSessionExpired(false)
-        setSecondsRemaining(0)
+        setManualExpired(false)
         queryClient.clear()
         router.push("/login")
         toast.add({
@@ -136,10 +99,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (!session?.refreshToken) return false
 
         try {
-            const updated = await refreshSessionToken(session.refreshToken, TOKEN_LIFETIME_MINS)
-            setSession(updated)
-            setIsSessionExpired(false)
-            setSecondsRemaining(TOKEN_LIFETIME_MINS * 60)
+            await refreshSessionToken(session.refreshToken, TOKEN_LIFETIME_MINS)
+            setManualExpired(false)
+            setNow(Date.now())
             queryClient.invalidateQueries({ queryKey: productKeys.all })
             toast.add({
                 title: "Session Extended",
@@ -148,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             })
             return true
         } catch {
-            setIsSessionExpired(true)
+            setManualExpired(true)
             return false
         }
     }, [session, queryClient])
@@ -159,10 +121,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (!session?.user?.username) return false
 
             try {
-                const newSession = await loginUser(session.user.username, password, TOKEN_LIFETIME_MINS)
-                setSession(newSession)
-                setIsSessionExpired(false)
-                setSecondsRemaining(TOKEN_LIFETIME_MINS * 60)
+                await loginUser(session.user.username, password, TOKEN_LIFETIME_MINS)
+                setManualExpired(false)
+                setNow(Date.now())
                 queryClient.invalidateQueries({ queryKey: productKeys.all })
                 toast.add({
                     title: "Session Restored",
@@ -184,8 +145,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Navigation protection
     useEffect(() => {
-        if (isLoading) return
-
         const isPublicRoute = pathname === "/login"
         const isAuth = Boolean(session?.accessToken)
 
@@ -197,7 +156,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const redirectUrl = encodeURIComponent(fullPath)
             router.push(`/login?redirect=${redirectUrl}`)
         }
-    }, [session, isLoading, pathname, router])
+    }, [session, pathname, router])
 
     return (
         <AuthContext.Provider
@@ -205,14 +164,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                 session,
                 user: session?.user ?? null,
                 isAuthenticated: Boolean(session?.accessToken),
-                isLoading,
+                isLoading: false,
                 isSessionExpired,
                 secondsRemaining,
                 login,
                 logout,
                 renewSession,
                 reAuthenticate,
-                setIsSessionExpired,
+                setIsSessionExpired: setManualExpired,
             }}
         >
             {children}

@@ -53,7 +53,7 @@ function LoginFormContent() {
     async function onSubmit(data: z.infer<typeof formSchema>) {
         setIsSubmitting(true)
         try {
-            const session = await login(data.username, data.password)
+            await login(data.username, data.password)
             toast.add({
                 title: "Login Successful",
                 description: "You are now logged in. Welcome back, " + data.username,

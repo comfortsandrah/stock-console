@@ -8,7 +8,6 @@ import {
     ArrowDown,
     Eye,
     Copy,
-    Check,
 } from "lucide-react"
 import Image from "next/image"
 import Link from "next/link"
@@ -19,7 +18,6 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { ProductListing } from "@/types/product"
