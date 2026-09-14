@@ -31,7 +31,7 @@ import Link from "next/link"
 import React, { use, useEffect, useState } from "react"
 
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
+import { Button, buttonVariants } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Empty, EmptyContent, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
@@ -182,11 +182,10 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                 {[1, 2, 3, 4, 5].map((star) => (
                     <Star
                         key={star}
-                        className={`size-3.5 ${
-                            star <= Math.round(rating)
+                        className={`size-3.5 ${star <= Math.round(rating)
                                 ? "fill-amber-400 text-amber-400"
                                 : "text-muted-foreground/30"
-                        }`}
+                            }`}
                     />
                 ))}
             </div>
@@ -276,15 +275,15 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                 setLocalProduct((prev) =>
                     prev
                         ? {
-                              ...prev,
-                              stock: parsed,
-                              availabilityStatus:
-                                  parsed === 0
-                                      ? "Out of Stock"
-                                      : parsed < 10
-                                      ? "Low Stock"
-                                      : "In Stock",
-                          }
+                            ...prev,
+                            stock: parsed,
+                            availabilityStatus:
+                                parsed === 0
+                                    ? "Out of Stock"
+                                    : parsed < 10
+                                        ? "Low Stock"
+                                        : "In Stock",
+                        }
                         : undefined
                 )
             }
@@ -305,15 +304,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         <div className="space-y-4 pb-8">
             {/* Top Back Navigation & Action Bar */}
             <div className="flex flex-wrap items-center justify-between gap-2.5">
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 gap-1.5 px-2 text-xs text-muted-foreground hover:text-foreground"
-                    render={<Link href="/products" />}
+                <Link
+                    href="/products"
+                    className={buttonVariants({ variant: "ghost", size: "sm" })}
                 >
                     <ArrowLeft className="size-3.5" />
                     <span>Back to Inventory</span>
-                </Button>
+                </Link>
 
                 <div className="flex items-center gap-1.5">
                     <Button
@@ -356,7 +353,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                                 </div>
                                 <div>
                                     <CardTitle className="text-sm font-semibold text-foreground">
-                                         Adjust Physical Stock Count
+                                        Adjust Physical Stock Count
                                     </CardTitle>
                                     <CardDescription className="text-xs text-muted-foreground">
                                         Update the system inventory count after physical verification or delivery reconciliation.
@@ -516,11 +513,10 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                                             aria-label={`View image ${idx + 1} of ${product.title}`}
                                             aria-selected={selectedImageIndex === idx}
                                             role="tab"
-                                            className={`relative size-14 shrink-0 overflow-hidden rounded-md border transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
-                                                selectedImageIndex === idx
+                                            className={`relative size-14 shrink-0 overflow-hidden rounded-md border transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${selectedImageIndex === idx
                                                     ? "border-primary ring-2 ring-primary/20"
                                                     : "border-border/60 opacity-70 hover:opacity-100"
-                                            }`}
+                                                }`}
                                         >
                                             <Image
                                                 src={img}

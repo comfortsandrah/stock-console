@@ -1,5 +1,3 @@
-"use client"
-
 export interface AuthUser {
     id: number
     username: string
