@@ -754,10 +754,10 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
                     <div>
                         <CardTitle className="text-sm font-bold text-foreground flex items-center gap-1.5">
                             <MessageSquare className="size-4 text-muted-foreground" />
-                            <span>Clinic Reviews & User Feedback</span>
+                            <span>User Reviews</span>
                         </CardTitle>
                         <CardDescription className="text-xs text-muted-foreground mt-0.5">
-                            Real-world clinical evaluations and feedback from healthcare practitioners.
+                            Real-world user reviews.
                         </CardDescription>
                     </div>
                     <div className="flex items-center gap-2">
