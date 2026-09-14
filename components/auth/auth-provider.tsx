@@ -190,7 +190,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const isAuth = Boolean(session?.accessToken)
 
         if (!isAuth && !isPublicRoute) {
-            const redirectUrl = encodeURIComponent(pathname)
+            const fullPath =
+                typeof window !== "undefined"
+                    ? window.location.pathname + window.location.search
+                    : pathname
+            const redirectUrl = encodeURIComponent(fullPath)
             router.push(`/login?redirect=${redirectUrl}`)
         }
     }, [session, isLoading, pathname, router])

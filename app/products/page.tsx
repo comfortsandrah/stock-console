@@ -73,6 +73,8 @@ function ProductsContainer() {
     const [category, setCategory] = useQueryState("category")
     const [sortBy, setSortBy] = useQueryState("sortBy")
     const [order, setOrder] = useQueryState("order")
+    const [delay, setDelay] = useQueryState("delay", parseAsInteger)
+    const [status] = useQueryState("status", parseAsInteger)
 
     const currentPage = page ?? 1
     const currentLimit = limit ?? 10
@@ -100,8 +102,9 @@ function ProductsContainer() {
         category: currentCategory !== "all" ? currentCategory : undefined,
         sortBy: currentSortBy,
         order: currentOrder,
+        delay: delay ?? undefined,
+        status: status ?? undefined,
     })
-
 
     // Map fetched products to ProductListing format for the DataTable
     const productListings = useMemo<ProductListing[]>(() => {
@@ -129,6 +132,12 @@ function ProductsContainer() {
     const safePage = Math.min(currentPage, totalPages)
     const firstItem = totalItems === 0 ? 0 : (safePage - 1) * currentLimit + 1
     const lastItem = Math.min(safePage * currentLimit, totalItems)
+
+    React.useEffect(() => {
+        if (productsResponse && productsResponse.total > 0 && currentPage > totalPages) {
+            setPage(1)
+        }
+    }, [productsResponse, currentPage, totalPages, setPage])
 
     const stats = useMemo(() => {
         const total = totalItems
@@ -179,6 +188,7 @@ function ProductsContainer() {
         setCategory(null)
         setSortBy(null)
         setOrder(null)
+        setDelay(null)
         setPage(1)
     }
 
@@ -435,6 +445,19 @@ function ProductsContainer() {
                                 </Badge>
                             )}
 
+                            {delay && (
+                                <Badge variant="secondary" className="gap-1 pr-1 text-[11px] h-5 border-amber-500/30 text-amber-600 bg-amber-500/10">
+                                    <span>Delay: {delay}ms (Slow connection test)</span>
+                                    <button
+                                        onClick={() => setDelay(null)}
+                                        className="rounded-full hover:bg-muted p-0.5"
+                                        aria-label="Remove simulated delay"
+                                    >
+                                        <X className="size-2.5" />
+                                    </button>
+                                </Badge>
+                            )}
+
                             <span className="ml-auto text-muted-foreground text-[11px]">
                                 {totalItems} product{totalItems === 1 ? "" : "s"} found
                             </span>
@@ -449,7 +472,7 @@ function ProductsContainer() {
                     <CardContent className="p-3 flex items-center justify-between text-xs text-destructive">
                         <div className="flex items-center gap-2">
                             <AlertCircle className="size-4 shrink-0" />
-                            <span>
+                            <span className="font-medium">
                                 {error instanceof Error ? error.message : "Failed to load products from server."}
                             </span>
                         </div>
@@ -457,44 +480,84 @@ function ProductsContainer() {
                             variant="outline"
                             size="sm"
                             onClick={() => refetch()}
-                            className="h-7 text-xs border-destructive/30 hover:bg-destructive/10"
+                            className="h-7 gap-1 text-xs border-destructive/30 hover:bg-destructive/10 text-destructive font-medium"
                         >
-                            Retry
+                            <RefreshCw className="size-3" />
+                            <span>Retry Request</span>
                         </Button>
                     </CardContent>
                 </Card>
             )}
 
-            {/* Products Table with Skeletons */}
+            {/* Products Table with Skeletons and Full Error / Empty States */}
             <DataTable
                 columns={columns}
                 data={productListings}
                 isLoading={isProductsLoading}
                 emptyContent={
-                    <Empty className="py-8 border-0">
-                        <EmptyMedia variant="icon">
-                            <Package className="size-5 text-muted-foreground" />
-                        </EmptyMedia>
-                        <EmptyHeader>
-                            <EmptyTitle className="text-sm">No matching products</EmptyTitle>
-                            <EmptyDescription className="text-xs">
-                                We couldn&apos;t find any products matching your criteria.
-                            </EmptyDescription>
-                        </EmptyHeader>
-                        {hasActiveFilters && (
+                    isError ? (
+                        <Empty className="py-8 border-0">
+                            <EmptyMedia variant="icon">
+                                <AlertCircle className="size-6 text-destructive" />
+                            </EmptyMedia>
+                            <EmptyHeader>
+                                <EmptyTitle className="text-sm text-destructive font-semibold">
+                                    Failed to load products
+                                </EmptyTitle>
+                                <EmptyDescription className="text-xs max-w-sm text-muted-foreground">
+                                    {error instanceof Error ? error.message : "An error occurred while fetching product data. Please check your connection or retry."}
+                                </EmptyDescription>
+                            </EmptyHeader>
                             <EmptyContent>
                                 <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={handleResetAllFilters}
-                                    className="gap-1 text-xs h-7"
+                                    onClick={() => refetch()}
+                                    className="gap-1.5 text-xs h-7 border-destructive/40 text-destructive hover:bg-destructive/10"
                                 >
-                                    <RotateCcw className="size-3" />
-                                    <span>Clear filters</span>
+                                    <RefreshCw className="size-3" />
+                                    <span>Retry</span>
                                 </Button>
                             </EmptyContent>
-                        )}
-                    </Empty>
+                        </Empty>
+                    ) : (
+                        <Empty className="py-8 border-0">
+                            <EmptyMedia variant="icon">
+                                <Package className="size-5 text-muted-foreground" />
+                            </EmptyMedia>
+                            <EmptyHeader>
+                                <EmptyTitle className="text-sm">No matching products</EmptyTitle>
+                                <EmptyDescription className="text-xs">
+                                    We couldn&apos;t find any products matching your criteria.
+                                </EmptyDescription>
+                            </EmptyHeader>
+                            {(hasActiveFilters || currentPage > 1) && (
+                                <EmptyContent className="flex items-center justify-center gap-2">
+                                    {currentPage > 1 && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setPage(1)}
+                                            className="gap-1 text-xs h-7"
+                                        >
+                                            <span>Go to Page 1</span>
+                                        </Button>
+                                    )}
+                                    {hasActiveFilters && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={handleResetAllFilters}
+                                            className="gap-1 text-xs h-7"
+                                        >
+                                            <RotateCcw className="size-3" />
+                                            <span>Clear filters</span>
+                                        </Button>
+                                    )}
+                                </EmptyContent>
+                            )}
+                        </Empty>
+                    )
                 }
             />
 

@@ -9,6 +9,8 @@ import {
     Star,
     CheckCircle2,
     AlertTriangle,
+    AlertCircle,
+    RefreshCw,
     XCircle,
     Package,
     ShieldCheck,
@@ -51,7 +53,13 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
     const productId = Number(resolvedParams.id)
     const router = useRouter()
 
-    const { data: apiProduct, isLoading: isQueryLoading } = useFetchProduct(productId)
+    const {
+        data: apiProduct,
+        isLoading: isQueryLoading,
+        isError,
+        error,
+        refetch,
+    } = useFetchProduct(productId)
     const updateProductMutation = useUpdateProduct()
 
     const [product, setProduct] = useState<Product | undefined>(undefined)
@@ -69,12 +77,14 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
             setProduct(apiProduct)
             setNewStockInput(String(apiProduct.stock))
             setIsLoading(false)
-        } else if (!isQueryLoading) {
+        } else if (!isQueryLoading && !isError) {
             const found = getProductById(productId)
             setProduct(found)
             if (found) {
                 setNewStockInput(String(found.stock))
             }
+            setIsLoading(false)
+        } else if (isError) {
             setIsLoading(false)
         }
 
@@ -90,7 +100,7 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         return () => {
             window.removeEventListener("stock_updated", handleStockUpdated)
         }
-    }, [apiProduct, isQueryLoading, productId])
+    }, [apiProduct, isQueryLoading, isError, productId])
 
     if (isLoading || isQueryLoading) {
         return (
@@ -103,6 +113,52 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
         )
     }
 
+    if (isError) {
+        return (
+            <div className="py-12 max-w-lg mx-auto">
+                <Card className="border-destructive/40 bg-destructive/5 shadow-md">
+                    <CardHeader className="text-center pb-2">
+                        <div className="mx-auto mb-2 flex size-12 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                            <AlertCircle className="size-6" />
+                        </div>
+                        <CardTitle className="text-base font-bold text-destructive">
+                            Failed to Load Product #{productId}
+                        </CardTitle>
+                        <CardDescription className="text-xs text-muted-foreground">
+                            {error instanceof Error
+                                ? error.message
+                                : "A server error occurred while retrieving this product. Please retry or return to inventory."}
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2">
+                        <Button
+                            variant="default"
+                            size="sm"
+                            onClick={() => {
+                                setIsLoading(true)
+                                refetch()
+                            }}
+                            className="w-full sm:w-auto h-8 gap-1.5 text-xs font-semibold"
+                        >
+                            <RefreshCw className="size-3.5" />
+                            <span>Retry Request</span>
+                        </Button>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            render={<Link href="/products" className="inline-flex items-center gap-1.5 w-full sm:w-auto justify-center" />}
+                            className="w-full sm:w-auto h-8 text-xs"
+                        >
+                            <ArrowLeft className="size-3.5" />
+                            <span>Return to Inventory</span>
+                        </Button>
+                    </CardContent>
+                </Card>
+            </div>
+        )
+    }
+
+    // Empty State (Product not found)
     if (!product) {
         return (
             <div className="py-12">
@@ -465,12 +521,16 @@ export default function ProductDetailPage({ params }: { params: Promise<{ id: st
 
                             {/* Thumbnail Switcher */}
                             {allImages.length > 1 && (
-                                <div className="flex items-center gap-2 mt-2.5 overflow-x-auto pb-1">
+                                <div className="flex items-center gap-2 mt-2.5 overflow-x-auto pb-1" role="tablist" aria-label="Product image thumbnails">
                                     {allImages.map((img, idx) => (
                                         <button
                                             key={idx}
+                                            type="button"
                                             onClick={() => setSelectedImageIndex(idx)}
-                                            className={`relative size-14 shrink-0 overflow-hidden rounded-md border transition-all ${
+                                            aria-label={`View image ${idx + 1} of ${product.title}`}
+                                            aria-selected={selectedImageIndex === idx}
+                                            role="tab"
+                                            className={`relative size-14 shrink-0 overflow-hidden rounded-md border transition-all focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary ${
                                                 selectedImageIndex === idx
                                                     ? "border-primary ring-2 ring-primary/20"
                                                     : "border-border/60 opacity-70 hover:opacity-100"

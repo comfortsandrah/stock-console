@@ -63,18 +63,19 @@ export function ProductPagination({
                 <PaginationItem>
                     <PaginationPrevious
                         href="#"
+                        aria-disabled={page <= 1}
+                        tabIndex={page <= 1 ? -1 : 0}
                         onClick={(event) => {
                             event.preventDefault()
-
                             if (page > 1) {
                                 onPageChange(page - 1)
                             }
                         }}
                         size="sm"
                         className={
-                            page === 1
-                                ? "h-7 text-xs px-2 pointer-events-none opacity-50"
-                                : "h-7 text-xs px-2"
+                            page <= 1
+                                ? "h-7 text-xs px-2 pointer-events-none opacity-40 cursor-not-allowed"
+                                : "h-7 text-xs px-2 cursor-pointer"
                         }
                     />
                 </PaginationItem>
@@ -94,8 +95,10 @@ export function ProductPagination({
                             <PaginationLink
                                 href="#"
                                 isActive={item === page}
+                                aria-label={`Page ${item}`}
+                                aria-current={item === page ? "page" : undefined}
                                 size="sm"
-                                className="size-7 p-0 text-xs font-medium"
+                                className="size-7 p-0 text-xs font-medium cursor-pointer"
                                 onClick={(event) => {
                                     event.preventDefault()
                                     onPageChange(item)
@@ -111,18 +114,19 @@ export function ProductPagination({
                 <PaginationItem>
                     <PaginationNext
                         href="#"
+                        aria-disabled={page >= totalPages}
+                        tabIndex={page >= totalPages ? -1 : 0}
                         onClick={(event) => {
                             event.preventDefault()
-
                             if (page < totalPages) {
                                 onPageChange(page + 1)
                             }
                         }}
                         size="sm"
                         className={
-                            page === totalPages
-                                ? "h-7 text-xs px-2 pointer-events-none opacity-50"
-                                : "h-7 text-xs px-2"
+                            page >= totalPages
+                                ? "h-7 text-xs px-2 pointer-events-none opacity-40 cursor-not-allowed"
+                                : "h-7 text-xs px-2 cursor-pointer"
                         }
                     />
                 </PaginationItem>

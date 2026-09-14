@@ -21,6 +21,8 @@ export interface FetchProductsParams {
     sortBy?: string | null
     order?: "asc" | "desc" | string | null
     select?: string | string[]
+    delay?: number | string | null
+    status?: number | string | null
 }
 
 /**
@@ -102,7 +104,10 @@ export function applyStockOverridesToProduct(product: Product): Product {
 /**
  * Fetch products from DummyJSON supporting search, category filter, pagination, sorting and select fields
  */
-export async function fetchProducts(params: FetchProductsParams = {}): Promise<ProductsResponse> {
+export async function fetchProducts(
+    params: FetchProductsParams = {},
+    signal?: AbortSignal
+): Promise<ProductsResponse> {
     const {
         limit = 10,
         skip,
@@ -112,6 +117,8 @@ export async function fetchProducts(params: FetchProductsParams = {}): Promise<P
         sortBy,
         order,
         select,
+        delay,
+        status,
     } = params
 
     const resolvedLimit = limit
@@ -131,7 +138,10 @@ export async function fetchProducts(params: FetchProductsParams = {}): Promise<P
     const cleanSearch = search?.trim()
     const cleanCategory = category?.trim()
 
-    if (cleanSearch) {
+    // Test error simulation (e.g. against /http/500)
+    if (status === 500 || status === "500" || cleanSearch === "/http/500" || cleanSearch === "http/500") {
+        endpoint = `${DUMMY_JSON_BASE_URL}/http/500`
+    } else if (cleanSearch) {
         endpoint = `${DUMMY_JSON_BASE_URL}/products/search`
         queryParams.set("q", cleanSearch)
     } else if (cleanCategory && cleanCategory !== "all") {
@@ -150,11 +160,26 @@ export async function fetchProducts(params: FetchProductsParams = {}): Promise<P
         queryParams.set("select", Array.isArray(select) ? select.join(",") : select)
     }
 
-    const url = `${endpoint}?${queryParams.toString()}`
+    if (delay !== undefined && delay !== null && delay !== "") {
+        queryParams.set("delay", String(delay))
+    }
 
-    const response = await fetch(url)
+    const url = endpoint.includes("/http/500")
+        ? `${endpoint}${delay ? `?delay=${delay}` : ""}`
+        : `${endpoint}?${queryParams.toString()}`
+
+    const response = await fetch(url, { signal })
     if (!response.ok) {
-        throw new Error(`Failed to fetch products: ${response.status} ${response.statusText}`)
+        let errorMessage = `Failed to fetch products: ${response.status} ${response.statusText}`
+        try {
+            const errorData = await response.json()
+            if (errorData?.message) {
+                errorMessage = errorData.message
+            }
+        } catch {
+            // ignore non-json response
+        }
+        throw new Error(errorMessage)
     }
 
     const data: ProductsResponse = await response.json()
@@ -166,7 +191,8 @@ export async function fetchProducts(params: FetchProductsParams = {}): Promise<P
 }
 
 /**
- * TanStack Query hook for fetching products list with pagination, filtering, search, and sorting
+ * TanStack Query hook for fetching products list with pagination, filtering, search, and sorting.
+ * Cancels obsolete requests via AbortSignal and ensures search never displays stale results from replaced queries.
  */
 export function useFetchProducts(
     params: FetchProductsParams = {},
@@ -174,8 +200,22 @@ export function useFetchProducts(
 ) {
     return useQuery({
         queryKey: productKeys.list(params),
-        queryFn: () => fetchProducts(params),
-        placeholderData: keepPreviousData,
+        queryFn: ({ signal }) => fetchProducts(params, signal),
+        placeholderData: (previousData, previousQuery) => {
+            // Keep previous data only during page changes within the same search & filter criteria.
+            // When search query or filters change, return undefined so fresh loading skeletons are shown immediately.
+            if (!previousData || !previousQuery) return undefined
+            const prevParams = (previousQuery.queryKey[2] || {}) as FetchProductsParams
+            if (
+                prevParams.search !== params.search ||
+                prevParams.category !== params.category ||
+                prevParams.sortBy !== params.sortBy ||
+                prevParams.order !== params.order
+            ) {
+                return undefined
+            }
+            return previousData
+        },
         staleTime: 1000 * 60 * 5, // 5 minutes
         ...options,
     })
@@ -184,10 +224,31 @@ export function useFetchProducts(
 /**
  * Fetch single product by ID from DummyJSON
  */
-export async function fetchProductById(id: number | string): Promise<Product> {
-    const response = await fetch(`${DUMMY_JSON_BASE_URL}/products/${id}`)
+export async function fetchProductById(id: number | string, signal?: AbortSignal): Promise<Product> {
+    if (String(id) === "500" || String(id) === "http/500") {
+        const response = await fetch(`${DUMMY_JSON_BASE_URL}/http/500`, { signal })
+        let msg = `HTTP 500 Internal Server Error`
+        try {
+            const errorData = await response.json()
+            if (errorData?.message) msg = errorData.message
+        } catch {
+            // ignore
+        }
+        throw new Error(msg)
+    }
+
+    const response = await fetch(`${DUMMY_JSON_BASE_URL}/products/${id}`, { signal })
     if (!response.ok) {
-        throw new Error(`Failed to fetch product #${id}: ${response.status} ${response.statusText}`)
+        let errorMessage = `Failed to fetch product #${id}: ${response.status} ${response.statusText}`
+        try {
+            const errorData = await response.json()
+            if (errorData?.message) {
+                errorMessage = errorData.message
+            }
+        } catch {
+            // ignore
+        }
+        throw new Error(errorMessage)
     }
     const data: Product = await response.json()
     return applyStockOverridesToProduct(data)
@@ -202,7 +263,7 @@ export function useFetchProduct(
 ) {
     return useQuery({
         queryKey: productKeys.detail(id ?? ""),
-        queryFn: () => fetchProductById(id!),
+        queryFn: ({ signal }) => fetchProductById(id!, signal),
         enabled: Boolean(id) && (options?.enabled ?? true),
         staleTime: 1000 * 60 * 5,
         ...options,
@@ -212,8 +273,8 @@ export function useFetchProduct(
 /**
  * Fetch category list from DummyJSON
  */
-export async function fetchCategoryList(): Promise<string[]> {
-    const response = await fetch(`${DUMMY_JSON_BASE_URL}/products/category-list`)
+export async function fetchCategoryList(signal?: AbortSignal): Promise<string[]> {
+    const response = await fetch(`${DUMMY_JSON_BASE_URL}/products/category-list`, { signal })
     if (!response.ok) {
         throw new Error(`Failed to fetch categories: ${response.status} ${response.statusText}`)
     }
@@ -228,7 +289,7 @@ export function useFetchCategoryList(
 ) {
     return useQuery({
         queryKey: productKeys.categoryList(),
-        queryFn: fetchCategoryList,
+        queryFn: ({ signal }) => fetchCategoryList(signal),
         staleTime: 1000 * 60 * 60, // 1 hour cache
         ...options,
     })
