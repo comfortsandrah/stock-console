@@ -444,3 +444,44 @@ The design follows five principles:
 3. **Safe to change** — stock corrections require validation and explicit confirmation.
 4. **Easy to share** — products have stable, unique URLs.
 5. **Resilient to poor connectivity** — cached data, pagination and clear network states reduce the impact of unreliable Wi-Fi.
+
+
+# Stock Console
+
+## Deployment
+
+- **Public URL:** https://stock-console-omega.vercel.app
+- **Branch that triggers a deployment:** `main`
+- **Pipeline:** On every push/PR, CI runs lint, type-check, and build against the code. A merge into `main` is blocked if any of these checks fail. Once merged, `main` triggers the production deployment on Vercel.
+
+---
+
+## 1. What did you use AI for across the four sections?
+
+**Section 1** — I used AI to polish the README's design, and give me better wording, and overall clarity.
+
+**Section 2** — I used AI to increase productivity while building: to improve user interface by providing meaningful words displayed to the user, generating the various data-fetching hooks, and refactoring those hooks to avoid repetition of query keys.
+
+**Section 3** — I used AI to modify a GitHub Actions workflow I'd already built for a previous project to cater for the stock-console project.
+
+## 2. Which tools did you use?
+I did not use any of the tools mentioned above
+I first understood the problem, then I worked through it in this order: designed the folder structure, designed the UI layout and components, built the pages, fetched data from the API, confirmed everything worked as expected, then pushed.
+
+## 3. One example where an AI suggestion improved your work
+
+**Nuqs:** I was working on URL state synchronization and had defined query parameters with default values. I was initially using the query state directly, which caused an issue when the URL value was `null` or `undefined`. I prompted the AI to help me handle the fallback correctly. It suggested using the **nullish coalescing operator (`??`)** to fall back to a local state value when the query state was not available. This fixed the state handling issue and made the filtering and pagination behavior more reliable.
+
+
+## 4. One example where AI output was wrong, incomplete, or subtly bad
+
+I wanted AI to only handle the authentication logic so the login form would work. Instead, it also modified the login form's UI and added components that weren't part of my design. I caught this and rejected that part of the suggestion.
+
+## 5. Two decisions made without AI
+
+- **Package choices** (shadcn/ui, TanStack Query, React, Next.js, nuqs) — I've worked with these before, they haven't let me down, and they're open-source.
+- **Folder structure** — planned this myself based on how I understood the project needed to be organized.
+
+## 6. One part of the codebase you'd struggle to defend
+
+Identifying query keys and doing query invalidation — it's confusing and remains the weakest part of the codebase for me.
