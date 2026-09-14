@@ -1,0 +1,155 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "stock-console/**"
+      - ".github/workflows/ci-cd.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "stock-console/**"
+      - ".github/workflows/ci-cd.yml"
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  detect:
+    name: Detect changed services
+    runs-on: ubuntu-latest
+    outputs:
+      stock_console: ${{ steps.set-flags.outputs.stock_console }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Detect folder changes
+        if: github.event_name != 'workflow_dispatch'
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            stock_console:
+              - "stock-console/**"
+              - ".github/workflows/ci-cd.yml"
+
+      - name: Set service flags
+        id: set-flags
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "stock_console=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "stock_console=${{ steps.filter.outputs.stock_console }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Show detected services
+        run: |
+          echo "Detected services: "
+          echo "Stock Console: ${{ steps.set-flags.outputs.stock_console }}"
+
+  stock-console-validate:
+    name: Stock Console tests & build
+    needs: detect
+    if: needs.detect.outputs.stock_console == 'true'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: stock-console/package-lock.json
+
+      - name: Install dependencies
+        working-directory: stock-console
+        run: npm ci
+
+      - name: Run lint
+        working-directory: stock-console
+        run: npm run lint
+
+      - name: Run TypeScript check
+        working-directory: stock-console
+        run: npx tsc --noEmit
+
+      - name: Build project
+        working-directory: stock-console
+        run: npm run build
+
+  stock-console-deploy-preview:
+    name: Deploy Preview to Vercel
+    needs:
+      - detect
+      - stock-console-validate
+
+    if: >
+      github.event_name == 'pull_request' &&
+      needs.detect.outputs.stock_console == 'true' &&
+      needs.stock-console-validate.result == 'success'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Deploy preview to Vercel
+        working-directory: stock-console
+        run: |
+          npx -y vercel@latest deploy \
+            --yes \
+            --token "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+  stock-console-deploy-production:
+    name: Deploy to Vercel (Production)
+    needs:
+      - detect
+      - stock-console-validate
+
+    if: >
+      (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch') &&
+      needs.detect.outputs.stock_console == 'true' &&
+      needs.stock-console-validate.result == 'success'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Deploy to Vercel
+        working-directory: stock-console
+        run: |
+          npx -y vercel@latest deploy \
+            --prod \
+            --yes \
+            --token "$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
